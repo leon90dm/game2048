@@ -90,3 +90,31 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes tile-move {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--move-x), var(--move-y)); }
+}
+
+.tile {
+  transition: all 0.15s ease-in-out;
+}
+
+.tile-new {
+  animation: animate__animated animate__fadeIn animate__faster;
+}
+
+.tile-merge {
+  animation: tile-merge 0.15s ease-in-out;
+  z-index: 1;
+}
+
+.tile-move {
+  animation: tile-move 0.15s ease-in-out;
+}
+
+@keyframes tile-merge {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}

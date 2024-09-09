@@ -1,10 +1,14 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import 'animate.css';
 
 type Tile = {
   value: number
   id: number
+  isNew?: boolean
+  isMerged?: boolean
+  animation?: string
 }
 
 type GameState = {
@@ -76,7 +80,9 @@ export function GameBoard() {
       const { i, j } = emptyTiles[Math.floor(Math.random() * emptyTiles.length)]
       board[i][j] = {
         value: Math.random() < 0.9 ? 2 : 4,
-        id: Date.now()
+        id: Date.now(),
+        isNew: true,
+        animation: 'animate__animated animate__fadeIn animate__faster'
       }
     }
     return board
@@ -97,6 +103,8 @@ export function GameBoard() {
       for (let i = 0; i < line.length - 1; i++) {
         if (line[i] && line[i + 1] && line[i].value === line[i + 1].value) {
           line[i].value *= 2
+          line[i].isMerged = true
+          line[i].animation = 'tile-merge' // Custom class for merge animation
           newScore += line[i].value
           line[i + 1] = null
           moved = true
@@ -144,6 +152,18 @@ export function GameBoard() {
         gameOver,
         won
       }))
+
+      // Reset animation classes after a short delay
+      setTimeout(() => {
+        setGameState(prevState => ({
+          ...prevState,
+          board: prevState.board.map(row =>
+            row.map(tile =>
+              tile ? { ...tile, isNew: false, isMerged: false, animation: undefined } : null
+            )
+          )
+        }))
+      }, 300)
     }
   }, [gameState, addRandomTile])
 
@@ -233,7 +253,7 @@ export function GameBoard() {
                 key={`${i}-${j}`}
                 className={`w-16 h-16 flex items-center justify-center text-2xl font-bold rounded-lg ${
                   tile ? getTileColor(tile.value) : 'bg-gray-200'
-                }`}
+                } ${tile?.animation || ''}`}
               >
                 {tile ? tile.value : ''}
               </div>
@@ -245,8 +265,8 @@ export function GameBoard() {
         <p className="text-xl">Score: {gameState.score}</p>
         <p className="text-xl">Best: {gameState.bestScore}</p>
       </div>
-      {gameState.gameOver && <p className="mt-4 text-2xl font-bold text-red-500">Game Over!</p>}
-      {gameState.won && <p className="mt-4 text-2xl font-bold text-green-500">You Won!</p>}
+      {gameState.gameOver && <p className="mt-4 text-2xl font-bold text-red-500 animate__animated animate__fadeIn">Game Over!</p>}
+      {gameState.won && <p className="mt-4 text-2xl font-bold text-green-500 animate__animated animate__fadeIn">You Won!</p>}
       
       {/* Add on-screen controls */}
       <div className="mt-4 grid grid-cols-3 gap-2">

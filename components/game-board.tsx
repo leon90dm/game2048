@@ -10,6 +10,7 @@ type Tile = {
 type GameState = {
   board: Tile[][]
   score: number
+  bestScore: number
   gameOver: boolean
   won: boolean
 }
@@ -17,24 +18,162 @@ type GameState = {
 const GRID_SIZE = 4
 const WINNING_TILE = 2048
 
+// Helper functions moved outside the component
+const isGameOver = (board: Tile[][]) => {
+  // Check if there are any empty cells
+  for (let i = 0; i < GRID_SIZE; i++) {
+    for (let j = 0; j < GRID_SIZE; j++) {
+      if (!board[i][j]) return false
+    }
+  }
+
+  // Check if any adjacent cells have the same value
+  for (let i = 0; i < GRID_SIZE; i++) {
+    for (let j = 0; j < GRID_SIZE; j++) {
+      const value = board[i][j].value
+      if (
+        (i < GRID_SIZE - 1 && board[i + 1][j].value === value) ||
+        (j < GRID_SIZE - 1 && board[i][j + 1].value === value)
+      ) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
+const hasWon = (board: Tile[][]) => {
+  for (let i = 0; i < GRID_SIZE; i++) {
+    for (let j = 0; j < GRID_SIZE; j++) {
+      if (board[i][j] && board[i][j].value === WINNING_TILE) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export function GameBoard() {
   const [gameState, setGameState] = useState<GameState>({
     board: [],
     score: 0,
+    bestScore: 0,
     gameOver: false,
     won: false
   })
+
+  const addRandomTile = useCallback((board: Tile[][]) => {
+    const emptyTiles = []
+    for (let i = 0; i < GRID_SIZE; i++) {
+      for (let j = 0; j < GRID_SIZE; j++) {
+        if (!board[i][j]) {
+          emptyTiles.push({ i, j })
+        }
+      }
+    }
+    if (emptyTiles.length > 0) {
+      const { i, j } = emptyTiles[Math.floor(Math.random() * emptyTiles.length)]
+      board[i][j] = {
+        value: Math.random() < 0.9 ? 2 : 4,
+        id: Date.now()
+      }
+    }
+    return board
+  }, [])
+
+  const move = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+    if (gameState.gameOver || gameState.won) return
+
+    let newBoard = JSON.parse(JSON.stringify(gameState.board))
+    let newScore = gameState.score
+    let moved = false
+
+    const moveAndMerge = (line: Tile[]) => {
+      // Remove nulls
+      line = line.filter(tile => tile !== null)
+      
+      // Merge tiles
+      for (let i = 0; i < line.length - 1; i++) {
+        if (line[i] && line[i + 1] && line[i].value === line[i + 1].value) {
+          line[i].value *= 2
+          newScore += line[i].value
+          line[i + 1] = null
+          moved = true
+          i++
+        }
+      }
+      
+      // Remove nulls again and pad with nulls
+      line = line.filter(tile => tile !== null)
+      while (line.length < GRID_SIZE) {
+        line.push(null)
+      }
+      
+      return line
+    }
+
+    if (direction === 'left' || direction === 'right') {
+      newBoard = newBoard.map(row => {
+        const line = direction === 'left' ? row : row.slice().reverse()
+        const mergedLine = moveAndMerge(line)
+        const newLine = direction === 'left' ? mergedLine : mergedLine.reverse()
+        moved = moved || !row.every((tile, index) => tile === newLine[index])
+        return newLine
+      })
+    } else {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        let line = newBoard.map(row => row[col])
+        line = direction === 'up' ? moveAndMerge(line) : moveAndMerge(line.reverse()).reverse()
+        const newLine = line
+        moved = moved || !newBoard.every((row, index) => row[col] === newLine[index])
+        for (let row = 0; row < GRID_SIZE; row++) {
+          newBoard[row][col] = newLine[row]
+        }
+      }
+    }
+
+    if (moved) {
+      newBoard = addRandomTile(newBoard)
+      const gameOver = isGameOver(newBoard)
+      const won = hasWon(newBoard)
+      setGameState(prevState => ({
+        ...prevState,
+        board: newBoard,
+        score: newScore,
+        gameOver,
+        won
+      }))
+    }
+  }, [gameState, addRandomTile])
 
   const initializeGame = useCallback(() => {
     let newBoard = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null))
     newBoard = addRandomTile(newBoard)
     newBoard = addRandomTile(newBoard)
-    setGameState({ board: newBoard, score: 0, gameOver: false, won: false })
-  }, [])
+    setGameState(prevState => ({
+      board: newBoard,
+      score: 0,
+      bestScore: prevState.bestScore,
+      gameOver: false,
+      won: false
+    }))
+  }, [addRandomTile])
 
   useEffect(() => {
     initializeGame()
+    const storedBestScore = localStorage.getItem('bestScore')
+    if (storedBestScore) {
+      setGameState(prevState => ({ ...prevState, bestScore: parseInt(storedBestScore, 10) }))
+    }
   }, [initializeGame])
+
+  useEffect(() => {
+    if (gameState.score > gameState.bestScore) {
+      setGameState(prevState => ({ ...prevState, bestScore: gameState.score }))
+      localStorage.setItem('bestScore', gameState.score.toString())
+    }
+  }, [gameState.score, gameState.bestScore])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,114 +199,7 @@ export function GameBoard() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [gameState])
-
-  const addRandomTile = (board: Tile[][]) => {
-    const emptyTiles = []
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        if (!board[i][j]) {
-          emptyTiles.push({ i, j })
-        }
-      }
-    }
-    if (emptyTiles.length > 0) {
-      const { i, j } = emptyTiles[Math.floor(Math.random() * emptyTiles.length)]
-      board[i][j] = {
-        value: Math.random() < 0.9 ? 2 : 4,
-        id: Date.now()
-      }
-    }
-    return board
-  }
-
-  const move = (direction: 'up' | 'down' | 'left' | 'right') => {
-    let newBoard = JSON.parse(JSON.stringify(gameState.board))
-    let newScore = gameState.score
-    let moved = false
-
-    const moveAndMerge = (line: Tile[]) => {
-      // Remove nulls
-      line = line.filter(tile => tile !== null)
-      
-      // Merge tiles
-      for (let i = 0; i < line.length - 1; i++) {
-        if (line[i].value === line[i + 1].value) {
-          line[i].value *= 2
-          newScore += line[i].value
-          line[i + 1] = null
-          moved = true
-          i++
-        }
-      }
-      
-      // Remove nulls again and pad with nulls
-      line = line.filter(tile => tile !== null)
-      while (line.length < GRID_SIZE) {
-        line.push(null)
-      }
-      
-      return line
-    }
-
-    if (direction === 'left' || direction === 'right') {
-      newBoard = newBoard.map(row => {
-        const line = direction === 'left' ? row : row.reverse()
-        const mergedLine = moveAndMerge(line)
-        return direction === 'left' ? mergedLine : mergedLine.reverse()
-      })
-    } else {
-      for (let col = 0; col < GRID_SIZE; col++) {
-        let line = newBoard.map(row => row[col])
-        line = direction === 'up' ? moveAndMerge(line) : moveAndMerge(line.reverse()).reverse()
-        for (let row = 0; row < GRID_SIZE; row++) {
-          newBoard[row][col] = line[row]
-        }
-      }
-    }
-
-    if (moved) {
-      newBoard = addRandomTile(newBoard)
-      const gameOver = isGameOver(newBoard)
-      const won = hasWon(newBoard)
-      setGameState({ board: newBoard, score: newScore, gameOver, won })
-    }
-  }
-
-  const isGameOver = (board: Tile[][]) => {
-    // Check if there are any empty cells
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        if (!board[i][j]) return false
-      }
-    }
-
-    // Check if any adjacent cells have the same value
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        const value = board[i][j].value
-        if (
-          (i < GRID_SIZE - 1 && board[i + 1][j].value === value) ||
-          (j < GRID_SIZE - 1 && board[i][j + 1].value === value)
-        ) {
-          return false
-        }
-      }
-    }
-
-    return true
-  }
-
-  const hasWon = (board: Tile[][]) => {
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        if (board[i][j] && board[i][j].value === WINNING_TILE) {
-          return true
-        }
-      }
-    }
-    return false
-  }
+  }, [gameState, move])
 
   const getTileColor = (value: number) => {
     const colors: { [key: number]: string } = {
@@ -184,6 +216,10 @@ export function GameBoard() {
       2048: 'bg-purple-500'
     }
     return colors[value] || 'bg-gray-300'
+  }
+
+  const handleMove = (direction: 'up' | 'down' | 'left' | 'right') => {
+    move(direction)
   }
 
   return (
@@ -205,12 +241,26 @@ export function GameBoard() {
           )}
         </div>
       </div>
-      <p className="mt-4 text-xl">Score: {gameState.score}</p>
+      <div className="mt-4 flex justify-between w-full max-w-xs">
+        <p className="text-xl">Score: {gameState.score}</p>
+        <p className="text-xl">Best: {gameState.bestScore}</p>
+      </div>
       {gameState.gameOver && <p className="mt-4 text-2xl font-bold text-red-500">Game Over!</p>}
       {gameState.won && <p className="mt-4 text-2xl font-bold text-green-500">You Won!</p>}
+      
+      {/* Add on-screen controls */}
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <button onClick={() => handleMove('left')} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">←</button>
+        <div className="grid grid-rows-2 gap-2">
+          <button onClick={() => handleMove('up')} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↑</button>
+          <button onClick={() => handleMove('down')} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↓</button>
+        </div>
+        <button onClick={() => handleMove('right')} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">→</button>
+      </div>
+      
       <button
         onClick={initializeGame}
-        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        className="mt-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
       >
         New Game
       </button>
